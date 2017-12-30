@@ -2,13 +2,13 @@
 """
   Copyright 2017 Alexander Korolev
   AuthServiceProxy has the following improvements:
-  - ported from Python 2 to Python 3.6
+  - ported from Python 2.x to Python 3.6
   - extracted argument parsing / config parsing from AuthServiceProxy logic into separate function
   - replaced constants in scope with class fields passed, as kwargs with defaults, to init
   - type hints added to discern effects from functions
   - Pythonic `if` checks
   - PEP 8
-  - unittests
+  - tests
 
   Previous Copyright, from jgarzik/bitcoin-rpc:
 
@@ -50,11 +50,10 @@ import base64
 import decimal
 import json
 import logging
-from typing import Optional
-from urllib import parse
+from typing import Optional, Union
 from http import client
-
-from .data_types import AuthProxyConfig
+from .data_types import AuthProxyConfig, ServiceUrl
+from http.client import HTTPConnection, HTTPSConnection
 
 
 class JSONRPCException(Exception):
@@ -85,55 +84,42 @@ def encode_decimal(o: decimal.Decimal) -> float:
 class AuthServiceProxy(object):
     __id_count = 0
 
-    def __init__(self, service_url: str,
-                 user_agent: str = "AuthServiceProxy/0.1",
-                 service_name: Optional[str] = None,
-                 timeout: int = 30,
-                 connection=None):
+    def __init__(self, config: AuthProxyConfig,
+                 service_name=None,
+                 connection: Union[Optional[HTTPSConnection], Optional[HTTPConnection]]=None):
 
         self.__log = logging.getLogger("BitcoinRPC")
-        self.__service_url = service_url
-        self.__service_name = service_name
-        self.__user_agent = user_agent
-        self.__url = parse.urlparse(service_url)
-        self.__port: int = self.__url.port or 80
+        self.__service_url: ServiceUrl = config.service_url
+        self.__service_name: Optional[str] = service_name
+        self.__user_agent = config.user_agent
+        self.__port: int = config.service_url.port or 80
+        self.__config = config
 
-        (user, passwd) = (self.__url.username, self.__url.password)
-        try:
-            user = user.encode('utf8')
-        except AttributeError:
-            pass
-        try:
-            passwd = passwd.encode('utf8')
-        except AttributeError:
-            pass
-        authpair = user + b':' + passwd
+        authpair = self.__service_url.username + b':' + self.__service_url.password
         self.__auth_header = b'Basic ' + base64.b64encode(authpair)
-
-        self.__timeout = timeout
+        self.__timeout = config.timeout
 
         if connection:
             # Callables re-use the connection of the original proxy
             self.__conn = connection
-        elif self.__url.scheme == 'https':
-            self.__conn = client.HTTPSConnection(self.__url.hostname, self.__port,
+        elif self.__service_url.scheme == 'https':
+            self.__conn = client.HTTPSConnection(self.__service_url.hostname, self.__port,
                                                  timeout=self.__timeout)
         else:
-            self.__conn = client.HTTPConnection(self.__url.hostname, self.__port,
+            self.__conn = client.HTTPConnection(self.__service_url.hostname, self.__port,
                                                 timeout=self.__timeout)
+        self.__service_name = service_name
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name):
         """ Used to make the calls via `.` on the service object """
-        print(name)
         if name.startswith('__') and name.endswith('__'):
             # Check to prevent users from calling private fields
             raise AttributeError
-        if self.__service_name:
+        if self.__service_name is not None:
             name = "%s.%s" % (self.__service_name, name)
-        return AuthServiceProxy(service_url=self.__service_url, service_name=name,
-                                timeout=self.__timeout, connection=self.__conn)
+        return AuthServiceProxy(config=self.__config, service_name=name, connection=self.__conn)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args):
         AuthServiceProxy.__id_count += 1
 
         self.__log.debug("-%s-> %s %s" % (AuthServiceProxy.__id_count, self.__service_name,
@@ -142,8 +128,8 @@ class AuthServiceProxy(object):
                                'method': self.__service_name,
                                'params': args,
                                'id': AuthServiceProxy.__id_count}, default=encode_decimal)
-        self.__conn.request('POST', self.__url.path, postdata,
-                            {'Host': self.__url.hostname,
+        self.__conn.request('POST', self.__service_url.path, postdata,
+                            {'Host': self.__service_url.hostname,
                              'User-Agent': self.__user_agent,
                              'Authorization': self.__auth_header,
                              'Content-type': 'application/json'})
@@ -208,5 +194,3 @@ class AuthServiceProxy(object):
         return response
 
 
-def get_or_create_proxy(config: AuthProxyConfig) -> AuthServiceProxy:
-    return AuthServiceProxy(**config._asdict())
