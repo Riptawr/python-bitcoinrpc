@@ -37,7 +37,7 @@
 try:
     import http.client as httplib
 except ImportError:
-    import httplib
+    import http.client
 import base64
 import decimal
 import json
@@ -45,13 +45,14 @@ import logging
 try:
     import urllib.parse as urlparse
 except ImportError:
-    import urlparse
+    import urllib.parse
 
 USER_AGENT = "AuthServiceProxy/0.1"
 
 HTTP_TIMEOUT = 30
 
 log = logging.getLogger("BitcoinRPC")
+
 
 class JSONRPCException(Exception):
     def __init__(self, rpc_error):
@@ -77,13 +78,14 @@ def EncodeDecimal(o):
         return float(round(o, 8))
     raise TypeError(repr(o) + " is not JSON serializable")
 
+
 class AuthServiceProxy(object):
     __id_count = 0
 
     def __init__(self, service_url, service_name=None, timeout=HTTP_TIMEOUT, connection=None):
         self.__service_url = service_url
         self.__service_name = service_name
-        self.__url = urlparse.urlparse(service_url)
+        self.__url = urllib.parse.urlparse(service_url)
         if self.__url.port is None:
             port = 80
         else:
@@ -106,11 +108,11 @@ class AuthServiceProxy(object):
             # Callables re-use the connection of the original proxy
             self.__conn = connection
         elif self.__url.scheme == 'https':
-            self.__conn = httplib.HTTPSConnection(self.__url.hostname, port,
-                                                  timeout=timeout)
+            self.__conn = http.client.HTTPSConnection(self.__url.hostname, port,
+                                                      timeout=timeout)
         else:
-            self.__conn = httplib.HTTPConnection(self.__url.hostname, port,
-                                                 timeout=timeout)
+            self.__conn = http.client.HTTPConnection(self.__url.hostname, port,
+                                                     timeout=timeout)
 
     def __getattr__(self, name):
         if name.startswith('__') and name.endswith('__'):
@@ -142,7 +144,7 @@ class AuthServiceProxy(object):
         elif 'result' not in response:
             raise JSONRPCException({
                 'code': -343, 'message': 'missing JSON-RPC result'})
-        
+
         return response['result']
 
     def batch_(self, rpc_calls):
