@@ -1,5 +1,17 @@
 
 """
+  Copyright 2017 Alexander Korolev
+  AuthServiceProxy has the following improvements:
+  - ported from Python 2 to Python 3.6
+  - extracted argument parsing / config parsing from AuthServiceProxy logic into separate function
+  - replaced constants in scope with class fields passed, as kwargs with defaults, to init
+  - type hints added to discern effects from functions
+  - Pythonic `if` checks
+  - PEP 8
+  - unittests
+
+  Previous Copyright, from jgarzik/bitcoin-rpc:
+
   Copyright 2011 Jeff Garzik
 
   AuthServiceProxy has the following improvements over python-jsonrpc's
@@ -34,26 +46,15 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 """
 
-try:
-    import http.client as httplib
-except ImportError:
-    import http.client
-import http
 import base64
 import decimal
 import json
 import logging
-import urllib
-try:
-    import urllib.parse as urlparse
-except ImportError:
-    import urllib.parse
+from typing import Optional
+from urllib import parse
+from http import client
 
-USER_AGENT = "AuthServiceProxy/0.1"
-
-HTTP_TIMEOUT = 30
-
-log = logging.getLogger("BitcoinRPC")
+from .data_types import AuthProxyConfig
 
 
 class JSONRPCException(Exception):
@@ -75,7 +76,7 @@ class JSONRPCException(Exception):
         return '<%s \'%s\'>' % (self.__class__.__name__, self)
 
 
-def EncodeDecimal(o):
+def encode_decimal(o: decimal.Decimal) -> float:
     if isinstance(o, decimal.Decimal):
         return float(round(o, 8))
     raise TypeError(repr(o) + " is not JSON serializable")
@@ -84,14 +85,19 @@ def EncodeDecimal(o):
 class AuthServiceProxy(object):
     __id_count = 0
 
-    def __init__(self, service_url, service_name=None, timeout=HTTP_TIMEOUT, connection=None):
+    def __init__(self, service_url: str,
+                 user_agent: str = "AuthServiceProxy/0.1",
+                 service_name: Optional[str] = None,
+                 timeout: int = 30,
+                 connection=None):
+
+        self.__log = logging.getLogger("BitcoinRPC")
         self.__service_url = service_url
         self.__service_name = service_name
-        self.__url = urllib.parse.urlparse(service_url)
-        if self.__url.port is None:
-            port = 80
-        else:
-            port = self.__url.port
+        self.__user_agent = user_agent
+        self.__url = parse.urlparse(service_url)
+        self.__port: int = self.__url.port or 80
+
         (user, passwd) = (self.__url.username, self.__url.password)
         try:
             user = user.encode('utf8')
@@ -110,32 +116,35 @@ class AuthServiceProxy(object):
             # Callables re-use the connection of the original proxy
             self.__conn = connection
         elif self.__url.scheme == 'https':
-            self.__conn = http.client.HTTPSConnection(self.__url.hostname, port,
-                                                      timeout=timeout)
+            self.__conn = client.HTTPSConnection(self.__url.hostname, self.__port,
+                                                 timeout=self.__timeout)
         else:
-            self.__conn = http.client.HTTPConnection(self.__url.hostname, port,
-                                                     timeout=timeout)
+            self.__conn = client.HTTPConnection(self.__url.hostname, self.__port,
+                                                timeout=self.__timeout)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
+        """ Used to make the calls via `.` on the service object """
+        print(name)
         if name.startswith('__') and name.endswith('__'):
-            # Python internal stuff
+            # Check to prevent users from calling private fields
             raise AttributeError
-        if self.__service_name is not None:
+        if self.__service_name:
             name = "%s.%s" % (self.__service_name, name)
-        return AuthServiceProxy(self.__service_url, name, self.__timeout, self.__conn)
+        return AuthServiceProxy(service_url=self.__service_url, service_name=name,
+                                timeout=self.__timeout, connection=self.__conn)
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         AuthServiceProxy.__id_count += 1
 
-        log.debug("-%s-> %s %s"%(AuthServiceProxy.__id_count, self.__service_name,
-                                 json.dumps(args, default=EncodeDecimal)))
+        self.__log.debug("-%s-> %s %s" % (AuthServiceProxy.__id_count, self.__service_name,
+                                 json.dumps(args, default=encode_decimal)))
         postdata = json.dumps({'version': '1.1',
                                'method': self.__service_name,
                                'params': args,
-                               'id': AuthServiceProxy.__id_count}, default=EncodeDecimal)
+                               'id': AuthServiceProxy.__id_count}, default=encode_decimal)
         self.__conn.request('POST', self.__url.path, postdata,
                             {'Host': self.__url.hostname,
-                             'User-Agent': USER_AGENT,
+                             'User-Agent': self.__user_agent,
                              'Authorization': self.__auth_header,
                              'Content-type': 'application/json'})
         self.__conn.sock.settimeout(self.__timeout)
@@ -160,8 +169,8 @@ class AuthServiceProxy(object):
             m = rpc_call.pop(0)
             batch_data.append({"jsonrpc":"2.0", "method":m, "params":rpc_call, "id":AuthServiceProxy.__id_count})
 
-        postdata = json.dumps(batch_data, default=EncodeDecimal)
-        log.debug("--> "+postdata)
+        postdata = json.dumps(batch_data, default=encode_decimal)
+        self.__log.debug("--> "+postdata)
         self.__conn.request('POST', self.__url.path, postdata,
                             {'Host': self.__url.hostname,
                              'User-Agent': USER_AGENT,
@@ -193,7 +202,11 @@ class AuthServiceProxy(object):
         responsedata = http_response.read().decode('utf8')
         response = json.loads(responsedata, parse_float=decimal.Decimal)
         if "error" in response and response["error"] is None:
-            log.debug("<-%s- %s"%(response["id"], json.dumps(response["result"], default=EncodeDecimal)))
+            self.__log.debug("<-%s- %s" % (response["id"], json.dumps(response["result"], default=encode_decimal)))
         else:
-            log.debug("<-- "+responsedata)
+            self.__log.debug("<-- "+responsedata)
         return response
+
+
+def get_or_create_proxy(config: AuthProxyConfig) -> AuthServiceProxy:
+    return AuthServiceProxy(**config._asdict())
