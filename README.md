@@ -1,13 +1,13 @@
 # python3-bitcoinrpc
 
-This is a port & refactored version python-bitcoinrpc for Python 3.6+
+This is a port & refactored version python-bitcoinrpc for **Python 3.6 or higher**
 
-Since the use-case changed to run inside a container, setup.py support is dropped.
 Apart from the initial configuration, the API did not change and most examples for bitcoinrpc should still work.
 
 ## Setup
 
 1. install requirements ```pip -r requirements.txt```
+2. ```python3.6 setup.py install```
 
 ## Testing
 1. have a bitcoind listening, make sure -rpcallowip is pointing to your local network and the daemon listens on the local ip
