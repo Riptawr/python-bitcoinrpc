@@ -11,7 +11,8 @@ Apart from the initial configuration, the API did not change and most examples f
 
 ## Testing
 1. build the provided docker container, 
-which will run a bitcoin-core (bitcoind) node. See [container_build_instructions](./deployment/bitcoind/README.md)
+which will run a **insecure** bitcoin-core (bitcoind) node.
+ See [container_build_instructions](./deployment/bitcoind/README.md)
 2. from the root dir run coverage ```coverage run --source=. -m unittest discover -s tests```
 3. check the abysmal coverage percentage ```coverage report```
 
