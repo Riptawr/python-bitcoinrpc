@@ -10,8 +10,8 @@ Apart from the initial configuration, the API did not change and most examples f
 2. ```python3.6 setup.py install```
 
 ## Testing
-1. have a bitcoind listening, make sure -rpcallowip is pointing to your local network and the daemon listens on the local ip
- ```bitcoind -server -rpcuser=user -rpcpassword=secret -rpcbind=192.168.0.100 -rpcallowip=192.168.0.0/24```
+1. build the provided docker container, 
+which will run a bitcoin-core (bitcoind) node. See [container_build_instructions](./deployment/bitcoind/README.md)
 2. from the root dir run coverage ```coverage run --source=. -m unittest discover -s tests```
 3. check the abysmal coverage percentage ```coverage report```
 

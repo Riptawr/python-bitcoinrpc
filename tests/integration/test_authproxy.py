@@ -8,10 +8,8 @@ class TestAuthProxy(TestCase):
         c = AuthProxyConfig(service_url=parse_service_url("http://user:secret@localhost:8332"))
         service = AuthServiceProxy(c)
         res = service.getinfo()  # TODO: replace with something that will not be deprecated
-        keys = ['deprecation-warning', 'version', 'protocolversion', 'walletversion', 'balance', 'blocks', 'timeoffset',
-                'connections', 'proxy', 'difficulty', 'testnet', 'keypoololdest', 'keypoolsize', 'unlocked_until',
-                'paytxfee', 'relayfee', 'errors']
-
-        self.assertSetEqual(set(keys), set(res.keys()))
+        keys = {'deprecation-warning', 'timeoffset', 'connections', 'keypoololdest', 'keypoolsize', 'walletversion', 'testnet', 'paytxfee', 'proxy', 'difficulty', 'errors', 'relayfee', 'balance', 'version', 'blocks', 'protocolversion'}
+        print(set(res.keys()))
+        self.assertSetEqual(keys, set(res.keys()))
         res2 = service.getinfo()
-        self.assertSetEqual(set(keys), set(res2.keys()), msg="Multiple calls do not re-use connection")
+        self.assertSetEqual(keys, set(res2.keys()), msg="Multiple calls do not re-use connection")
